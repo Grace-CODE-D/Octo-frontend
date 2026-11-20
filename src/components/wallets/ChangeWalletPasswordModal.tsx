@@ -1,7 +1,7 @@
 "use client";
 
 import { errorMessage } from "@/lib/api";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { toast } from "sonner";
 import { Modal } from "@/components/dashboard/Modal";
 import {
@@ -37,6 +37,10 @@ export function ChangeWalletPasswordModal({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const currentPasswordId = useId();
+  const newPasswordId = useId();
+  const confirmPasswordId = useId();
+  const errorId = useId();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -142,24 +146,30 @@ export function ChangeWalletPasswordModal({
       </p>
       <form onSubmit={handleSubmit} className="mt-5 space-y-4">
         <div>
-          <label className="text-xs text-muted">Current password</label>
+          <label htmlFor={currentPasswordId} className="text-xs text-muted">Current password</label>
           <input
+            id={currentPasswordId}
             type="password"
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}
             placeholder="Current wallet password"
             autoComplete="current-password"
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? errorId : undefined}
             className="mt-1 w-full rounded-lg border border-border bg-surface-sunken px-3 py-2 text-sm text-foreground placeholder:text-muted/50 focus:border-burgundy-bright focus:outline-none"
           />
         </div>
         <div>
-          <label className="text-xs text-muted">New password</label>
+          <label htmlFor={newPasswordId} className="text-xs text-muted">New password</label>
           <input
+            id={newPasswordId}
             type="password"
             value={newPassword}
             onChange={(e) => handlePasswordChange(e.target.value)}
             placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
             autoComplete="new-password"
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? errorId : undefined}
             className="mt-1 w-full rounded-lg border border-border bg-surface-sunken px-3 py-2 text-sm text-foreground placeholder:text-muted/50 focus:border-burgundy-bright focus:outline-none"
           />
           {pwAssessment && (
@@ -172,18 +182,21 @@ export function ChangeWalletPasswordModal({
           )}
         </div>
         <div>
-          <label className="text-xs text-muted">Confirm new password</label>
+          <label htmlFor={confirmPasswordId} className="text-xs text-muted">Confirm new password</label>
           <input
+            id={confirmPasswordId}
             type="password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             placeholder="Repeat the new password"
             autoComplete="new-password"
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? errorId : undefined}
             className="mt-1 w-full rounded-lg border border-border bg-surface-sunken px-3 py-2 text-sm text-foreground placeholder:text-muted/50 focus:border-burgundy-bright focus:outline-none"
           />
         </div>
         {error && (
-          <p className="rounded-lg border border-burgundy/40 bg-burgundy/10 px-3 py-2 text-sm text-burgundy-bright">
+          <p id={errorId} role="alert" className="rounded-lg border border-burgundy/40 bg-burgundy/10 px-3 py-2 text-sm text-burgundy-bright">
             {error}
           </p>
         )}

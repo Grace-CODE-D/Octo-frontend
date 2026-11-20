@@ -1,7 +1,7 @@
 "use client";
 
 import { errorMessage } from "@/lib/api";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { toast } from "sonner";
 import { Modal } from "@/components/dashboard/Modal";
 import {
@@ -33,6 +33,10 @@ export function RecoverWalletModal({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const phraseId = useId();
+  const newPasswordId = useId();
+  const confirmPasswordId = useId();
+  const errorId = useId();
   const [step, setStep] = useState<Step>("phrase");
   const [phrase, setPhrase] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -148,13 +152,16 @@ export function RecoverWalletModal({
         </p>
         <form onSubmit={handlePasswordSubmit} className="mt-5 space-y-4">
           <div>
-            <label className="text-xs text-muted">New wallet password</label>
+            <label htmlFor={newPasswordId} className="text-xs text-muted">New wallet password</label>
             <input
+              id={newPasswordId}
               type="password"
               value={newPassword}
               onChange={(e) => handlePasswordChange(e.target.value)}
               placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
               autoComplete="new-password"
+              aria-invalid={Boolean(error)}
+              aria-describedby={error ? errorId : undefined}
               className="mt-1 w-full rounded-lg border border-border bg-surface-sunken px-3 py-2 text-sm text-foreground placeholder:text-muted/50 focus:border-burgundy-bright focus:outline-none"
             />
             {pwAssessment && (
@@ -167,18 +174,21 @@ export function RecoverWalletModal({
             )}
           </div>
           <div>
-            <label className="text-xs text-muted">Confirm password</label>
+            <label htmlFor={confirmPasswordId} className="text-xs text-muted">Confirm password</label>
             <input
+              id={confirmPasswordId}
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="Repeat the password"
               autoComplete="new-password"
+              aria-invalid={Boolean(error)}
+              aria-describedby={error ? errorId : undefined}
               className="mt-1 w-full rounded-lg border border-border bg-surface-sunken px-3 py-2 text-sm text-foreground placeholder:text-muted/50 focus:border-burgundy-bright focus:outline-none"
             />
           </div>
           {error && (
-            <p className="rounded-lg border border-burgundy/40 bg-burgundy/10 px-3 py-2 text-sm text-burgundy-bright">
+            <p id={errorId} role="alert" className="rounded-lg border border-burgundy/40 bg-burgundy/10 px-3 py-2 text-sm text-burgundy-bright">
               {error}
             </p>
           )}
@@ -202,8 +212,9 @@ export function RecoverWalletModal({
       </p>
       <form onSubmit={handlePhraseSubmit} className="mt-5 space-y-4">
         <div>
-          <label className="text-xs text-muted">Recovery phrase (12 words)</label>
+          <label htmlFor={phraseId} className="text-xs text-muted">Recovery phrase (12 words)</label>
           <textarea
+            id={phraseId}
             value={phrase}
             onChange={(e) => setPhrase(e.target.value)}
             placeholder="word1 word2 word3 … word12"
@@ -212,11 +223,13 @@ export function RecoverWalletModal({
             autoCorrect="off"
             autoCapitalize="off"
             autoComplete="off"
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? errorId : undefined}
             className="mt-1 w-full rounded-lg border border-border bg-surface-sunken px-3 py-2 font-mono text-sm text-foreground placeholder:text-muted/50 focus:border-burgundy-bright focus:outline-none"
           />
         </div>
         {error && (
-          <p className="rounded-lg border border-burgundy/40 bg-burgundy/10 px-3 py-2 text-sm text-burgundy-bright">
+          <p id={errorId} role="alert" className="rounded-lg border border-burgundy/40 bg-burgundy/10 px-3 py-2 text-sm text-burgundy-bright">
             {error}
           </p>
         )}
