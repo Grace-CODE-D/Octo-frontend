@@ -48,6 +48,7 @@ export function useIdleTimer({
   const warnTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const deadlineRef = useRef<number>(0);
+  const lastActivityAtRef = useRef<number>(Date.now());
   // Keep latest callbacks in refs — updated inside effects to avoid stale closures in timers.
   const onWarnRef = useRef(onWarn);
   const onIdleRef = useRef(onIdle);
@@ -77,6 +78,7 @@ export function useIdleTimer({
     function resetTimers() {
       clearTimers();
       setState("active");
+      lastActivityAtRef.current = Date.now();
       deadlineRef.current = Date.now() + timeoutMs;
       setRemainingMs(timeoutMs);
       warnTimer.current = setTimeout(() => {
@@ -95,13 +97,42 @@ export function useIdleTimer({
       }, timeoutMs);
     }
 
+    // Timers are throttled/suspended in background tabs and while the machine
+    // sleeps, so on resume we reconcile against wall-clock time.
+    function checkElapsed() {
+      const elapsed = Date.now() - lastActivityAtRef.current;
+      if (elapsed >= timeoutMs) {
+        clearTimers();
+        setState("idle");
+        setRemainingMs(0);
+        onIdleRef.current();
+      } else if (elapsed >= timeoutMs - warnBeforeMs) {
+        clearTimers();
+        setState("warning");
+        onWarnRef.current();
+        countdownTimer.current = setInterval(() => {
+          setRemainingMs(Math.max(0, deadlineRef.current - Date.now()));
+        }, 1000);
+      }
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") checkElapsed();
+    }
+
     resetRef.current = resetTimers;
     resetTimers();
     ACTIVITY_EVENTS.forEach((ev) => window.addEventListener(ev, resetTimers, { passive: true }));
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", checkElapsed);
+    window.addEventListener("pageshow", checkElapsed);
 
     return () => {
       clearTimers();
       ACTIVITY_EVENTS.forEach((ev) => window.removeEventListener(ev, resetTimers));
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", checkElapsed);
+      window.removeEventListener("pageshow", checkElapsed);
     };
   }, [enabled, timeoutMs, warnBeforeMs]);
 
