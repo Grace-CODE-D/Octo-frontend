@@ -64,7 +64,7 @@ export function getFeeStroops(info: SigningInfo): number {
   return validateFee(info.base_fee_stroops);
 }
 
-/** A withdrawal memo — either text (max 28 chars) or a numeric ID (uint64). */
+/** A withdrawal memo — either text (max 28 UTF-8 bytes) or a numeric ID (uint64). */
 export type Memo =
   | { type: "text"; text: string }
   | { type: "id"; id: string };
@@ -77,7 +77,9 @@ export function validateMemo(memo?: Memo): string | null {
   if (!memo) return null;
   if (memo.type === "text") {
     if (memo.text.length === 0) return "Memo text cannot be empty.";
-    if (memo.text.length > 28) return "Memo text must be 28 characters or fewer.";
+    if (new TextEncoder().encode(memo.text).length > 28) {
+      return "Memo text must be 28 bytes or fewer (accented letters and emoji use more than one byte).";
+    }
     return null;
   }
   if (!/^\d+$/.test(memo.id)) return "Memo ID must be a non-negative integer.";

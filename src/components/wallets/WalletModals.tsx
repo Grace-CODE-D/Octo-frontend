@@ -17,7 +17,7 @@ import {
 } from "@/lib/sdk";
 import { parseAmount, formatStroops } from "@/lib/amount";
 import { validateStellarAddress, getStellarAddressKind, baseAccountOf } from "@/lib/stellar/address";
-import { minimumBalanceStroops, spendableNativeStroops, minCreateAccountStroops, reserveIsExact } from "@/lib/stellar/reserve";
+import { DEFAULT_BASE_FEE_STROOPS, minimumBalanceStroops, spendableNativeStroops, minCreateAccountStroops, reserveIsExact } from "@/lib/stellar/reserve";
 import { friendlyResultMessage, isExpiredResult } from "@/lib/stellar/resultCodes";
 
 
@@ -340,6 +340,14 @@ export function WithdrawModal({
   const reviewedAmountParsed = reviewedAmount ? parseAmount(reviewedAmount) : null;
   const reviewedAmountStroops = reviewedAmountParsed?.ok ? reviewedAmountParsed.stroops : BigInt(0);
 
+  const feeDisplay = (() => {
+    try {
+      return formatStroops(reserveInfo ? getFeeStroops(reserveInfo) : DEFAULT_BASE_FEE_STROOPS);
+    } catch {
+      return "Unavailable (network fee data is invalid)";
+    }
+  })();
+
   // Everything checkable without the password, so bad input never reaches the unlock/sign step.
   function validate(): { error: string } | { stroops: bigint } {
     const addrError = validateStellarAddress(destination, { ownAddress: walletAddress });
@@ -395,10 +403,10 @@ export function WithdrawModal({
       setReviewedNeedsCreate(needsCreate);
       setReviewedAmount(formatStroops(checked.stroops));
       setReviewed(true);
-      setSubmitting(false);
     } catch (err) {
       const message = errorMessage(err, "Failed to validate destination");
       setError(message);
+    } finally {
       setSubmitting(false);
     }
   }
@@ -609,7 +617,7 @@ export function WithdrawModal({
             <p className="text-warning">This will create the account.</p>
           )}
           <p className="text-muted">
-            Fee: <span className="text-foreground">{reserveInfo ? (getFeeStroops(reserveInfo) / 10000000).toFixed(7) : "0.0000100"} XLM</span>
+            Fee: <span className="text-foreground">{feeDisplay}{feeDisplay.startsWith("Unavailable") ? "" : " XLM"}</span>
           </p>
           {createsAccount && (
             <p className="text-warning">
@@ -686,7 +694,7 @@ export function WithdrawModal({
             </p>
           )}
           <p className="text-muted">
-            Fee: <span className="text-foreground">{reserveInfo ? (getFeeStroops(reserveInfo) / 10000000).toFixed(7) : "0.0000100"} XLM</span>
+            Fee: <span className="text-foreground">{feeDisplay}{feeDisplay.startsWith("Unavailable") ? "" : " XLM"}</span>
           </p>
           {createsAccount && (
             <p className="text-warning">
@@ -995,7 +1003,7 @@ export function WithdrawModal({
           />
           <p className="mt-1 text-[11px] text-muted">
             {memoType === "text"
-              ? "Text memos are limited to 28 characters."
+              ? `${new TextEncoder().encode(memo).length}/28 bytes used. Text memos are limited to 28 UTF-8 bytes.`
               : "Numeric memo ID (up to 64 bits). Exchanges/custodians may require this to credit deposits."}
           </p>
         </div>
