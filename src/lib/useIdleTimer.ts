@@ -87,6 +87,7 @@ export function useIdleTimer({
   const warnTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const deadlineRef = useRef<number>(0);
+  const lastActivityAtRef = useRef<number>(Date.now());
   // Keep latest callbacks in refs — updated inside effects to avoid stale closures in timers.
   const onWarnRef = useRef(onWarn);
   const onIdleRef = useRef(onIdle);
@@ -153,6 +154,7 @@ export function useIdleTimer({
       const remaining = Math.max(0, timeoutMs - elapsed);
       const warnIn = Math.max(0, remaining - warnBeforeMs);
 
+      lastActivityAtRef.current = lastActivity;
       deadlineRef.current = lastActivity + timeoutMs;
       setRemainingMs(remaining);
 
@@ -187,6 +189,30 @@ export function useIdleTimer({
         setRemainingMs(0);
         onIdleRef.current();
       }, remaining);
+    }
+
+    // Timers are throttled/suspended in background tabs and while the machine
+    // sleeps, so on resume we reconcile against wall-clock time.
+    function checkElapsed() {
+      const lastActivity = Math.max(localActivityRef.current, readSharedActivity());
+      const elapsed = Math.max(0, Date.now() - lastActivity);
+      if (elapsed >= timeoutMs) {
+        clearTimers();
+        setState("idle");
+        setRemainingMs(0);
+        onIdleRef.current();
+      } else if (elapsed >= timeoutMs - warnBeforeMs) {
+        clearTimers();
+        setState("warning");
+        onWarnRef.current();
+        countdownTimer.current = setInterval(() => {
+          setRemainingMs(Math.max(0, deadlineRef.current - Date.now()));
+        }, 1000);
+      }
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") checkElapsed();
     }
 
     /** Record local activity and reschedule from the shared maximum. */
@@ -245,10 +271,16 @@ export function useIdleTimer({
     ACTIVITY_EVENTS.forEach((ev) =>
       window.addEventListener(ev, handleLocalActivity, { passive: true }),
     );
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", checkElapsed);
+    window.addEventListener("pageshow", checkElapsed);
 
     return () => {
       clearTimers();
       ACTIVITY_EVENTS.forEach((ev) => window.removeEventListener(ev, handleLocalActivity));
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", checkElapsed);
+      window.removeEventListener("pageshow", checkElapsed);
       window.removeEventListener("storage", handleStorage);
       if (channel) {
         channel.onmessage = null;
