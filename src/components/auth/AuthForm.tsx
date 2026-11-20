@@ -7,6 +7,7 @@ import { signup, login, verifyEmail, resendOtp, needsVerification, needsTwoFacto
 import { errorMessage } from "@/lib/api";
 import { safeNextPath } from "@/lib/safeNext";
 import { assessPassword, MIN_PASSWORD_SCORE } from "@/lib/passwordStrength";
+import { isValidEmail } from "@/lib/validation";
 import { OtpInput } from "./OtpInput";
 
 type Mode = "signup" | "login";
@@ -60,7 +61,8 @@ export function AuthForm({
     e.preventDefault();
     setError(null);
 
-    if (!email.includes("@")) {
+    const normalizedEmail = email.trim();
+    if (!isValidEmail(normalizedEmail)) {
       setError("Please enter a valid email address.");
       return;
     }
@@ -68,14 +70,14 @@ export function AuthForm({
       setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
       return;
     }
-    if (isSignup) { const a = await assessPassword(password, [email]); if (a.score < MIN_PASSWORD_SCORE) {
+    if (isSignup) { const a = await assessPassword(password, [normalizedEmail]); if (a.score < MIN_PASSWORD_SCORE) {
       setError("Please choose a stronger password.");
       return;
     }}
 
     setLoading(true);
     try {
-      const result = isSignup ? await signup(email, password) : await login(email, password);
+      const result = isSignup ? await signup(normalizedEmail, password) : await login(normalizedEmail, password);
       if (needsTwoFactor(result)) {
         setChallengeId(result.challenge_id);
         setCode("");
@@ -266,6 +268,7 @@ export function AuthForm({
             <input
               id="email-input"
               type="email"
+              inputMode="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Enter personal email here"

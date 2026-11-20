@@ -6,6 +6,9 @@ import { apiFetch, path } from "./api";
 import { parseAmount, toApiStroops } from "./amount";
 import type { AuthToken, WalletId } from "./brands";
 import { pageQuery, type Paginated, type PageOpts } from "./pagination";
+import { isValidEmail } from "./validation";
+
+export { isValidEmail };
 
 export type PaymentLink = {
   id: string;
@@ -240,7 +243,4 @@ export function flexibleAmountBounds(link: PublicPaymentLink): {
   };
 }
 
-/** Basic shape check (not full RFC 5322) — enough to catch typos before submitting. */
-export function isValidEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
+

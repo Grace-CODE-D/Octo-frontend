@@ -39,7 +39,7 @@ export function ChangePasswordForm({ token }: { token: string }) {
       setConfirm("");
       toast.success("Password changed.");
     } catch (err) {
-      setError(errorMessage(err, "Failed to change password."));
+      setError(errorMessage(err, "Failed to change password. Check your current password."));
     } finally {
       setBusy(false);
     }

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ApiError, errorMessage } from "@/lib/api";
 import { requestPasswordReset, resetPassword, MIN_ACCOUNT_PASSWORD_LENGTH } from "@/lib/passwordApi";
 import { assessPassword, MIN_PASSWORD_SCORE } from "@/lib/passwordStrength";
+import { isValidEmail } from "@/lib/validation";
 import { OtpInput } from "./OtpInput";
 
 type Step = "email" | "code" | "password" | "done";
@@ -32,10 +33,15 @@ export function ForgotPasswordForm() {
 
   async function onEmail(e: React.FormEvent) {
     e.preventDefault();
+    const normalized = email.trim();
+    if (!isValidEmail(normalized)) {
+      setError("Enter a valid email address.");
+      return;
+    }
     setError(null);
     setBusy(true);
     try {
-      await requestPasswordReset(email.trim());
+      await requestPasswordReset(normalized);
     } catch (err) {
       // Only surface non-client errors so the flow never reveals whether the email is registered.
       if (!(err instanceof ApiError) || err.status >= 500) {
@@ -135,6 +141,7 @@ export function ForgotPasswordForm() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
+              inputMode="email"
               placeholder="you@example.com"
               className={inputClass}
             />
