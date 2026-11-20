@@ -20,10 +20,11 @@ export {
   buildSignedCreateAccount,
   buildUnsignedPayment,
   txExpiresAt,
+  describeSignedWithdrawal,
   TX_TIMEOUT_SECONDS,
   validateMemo,
 } from "./tx";
-export type { SigningInfo, Memo } from "./tx";
+export type { SigningInfo, Memo, SignedWithdrawalDetails } from "./tx";
 
 export {
   getSigningInfo,
