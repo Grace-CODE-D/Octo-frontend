@@ -14,11 +14,11 @@ import {
   unlockWallet, getSigningInfo, submitSigned, requestWithdrawOtp, confirmWithdraw,
   getAccountExists, buildSignedPayment, buildSignedChangeTrust, buildSignedCreateAccount,
   txExpiresAt, TX_TIMEOUT_SECONDS, assertNetworkConsistency, validateMemo,
-  getFeeStroops, type SigningInfo, type SubmitResult, type Memo,
+  describeSignedWithdrawal, getFeeStroops, type SigningInfo, type SubmitResult, type Memo,
 } from "@/lib/sdk";
 import { parseAmount, formatStroops } from "@/lib/amount";
 import { validateStellarAddress, getStellarAddressKind, baseAccountOf } from "@/lib/stellar/address";
-import { minimumBalanceStroops, spendableNativeStroops, minCreateAccountStroops, reserveIsExact } from "@/lib/stellar/reserve";
+import { DEFAULT_BASE_FEE_STROOPS, minimumBalanceStroops, spendableNativeStroops, minCreateAccountStroops, reserveIsExact } from "@/lib/stellar/reserve";
 import { friendlyResultMessage, isExpiredResult } from "@/lib/stellar/resultCodes";
 
 
@@ -349,11 +349,14 @@ export function WithdrawModal({
   const [resendAvailableAt, setResendAvailableAt] = useState(0);
   const [resending, setResending] = useState(false);
   const [reviewed, setReviewed] = useState(false);
+  const [reviewedNeedsCreate, setReviewedNeedsCreate] = useState(false);
+  const [reviewedAmount, setReviewedAmount] = useState<string | null>(null);
   const [signedTxDetails, setSignedTxDetails] = useState<{
     destination: string;
     amount: string;
     assetCode: string;
     assetIssuer?: string;
+    memo?: Memo;
   } | null>(null);
   const resendCooldown = Math.max(0, Math.ceil((resendAvailableAt - now) / 1000));
 
@@ -387,6 +390,16 @@ export function WithdrawModal({
   const reserveStroops = selected.asset
     ? null
     : minimumBalanceStroops(reserveInfo, trustlines.length);
+  const reviewedAmountParsed = reviewedAmount ? parseAmount(reviewedAmount) : null;
+  const reviewedAmountStroops = reviewedAmountParsed?.ok ? reviewedAmountParsed.stroops : BigInt(0);
+
+  const feeDisplay = (() => {
+    try {
+      return formatStroops(reserveInfo ? getFeeStroops(reserveInfo) : DEFAULT_BASE_FEE_STROOPS);
+    } catch {
+      return "Unavailable (network fee data is invalid)";
+    }
+  })();
 
   // Everything checkable without the password, so bad input never reaches the unlock/sign step.
   function validate(): { error: string } | { stroops: bigint } {
@@ -419,9 +432,7 @@ export function WithdrawModal({
     }
     setSubmitting(true);
     try {
-      const exists = await getAccountExists(token, walletId, baseAccountOf(destination))
-        .then((r) => r.exists)
-        .catch(() => null);
+      const exists = (await getAccountExists(token, walletId, baseAccountOf(destination))).exists;
       const needsCreate = exists === false;
       if (needsCreate && selected.asset) {
         setError(
@@ -442,11 +453,13 @@ export function WithdrawModal({
         return;
       }
       setCreatesAccount(needsCreate);
+      setReviewedNeedsCreate(needsCreate);
+      setReviewedAmount(formatStroops(checked.stroops));
       setReviewed(true);
-      setSubmitting(false);
     } catch (err) {
       const message = errorMessage(err, "Failed to validate destination");
       setError(message);
+    } finally {
       setSubmitting(false);
     }
   }
@@ -464,10 +477,6 @@ export function WithdrawModal({
     }
     setSubmitting(true);
     try {
-      const exists = await getAccountExists(token, walletId, baseAccountOf(destination))
-        .then((r) => r.exists)
-        .catch(() => null);
-      const needsCreate = exists === false;
       const keypair = await unlockWallet(token, walletId, password, walletAddress);
       const info = await getSigningInfo(token, walletId);
       assertNetworkConsistency(info.network_passphrase);
@@ -478,7 +487,7 @@ export function WithdrawModal({
           : { type: "text", text: memoValue }
         : undefined;
       const normalized = formatStroops(checked.stroops);
-      const signedXdr = needsCreate
+      const signedXdr = reviewedNeedsCreate
         ? buildSignedCreateAccount(keypair, info, {
             destination,
             startingBalance: normalized,
@@ -490,8 +499,24 @@ export function WithdrawModal({
             asset: selected.asset,
             memo: memoPayload,
           });
+      const decoded = describeSignedWithdrawal(signedXdr, info.network_passphrase);
+      const expectedMemo = memoPayload;
+      const memoMatches = decoded.memo?.type === expectedMemo?.type &&
+        (decoded.memo?.type === "text"
+          ? decoded.memo.text === expectedMemo?.text
+          : decoded.memo?.type === "id"
+            ? decoded.memo.id === expectedMemo?.id
+            : !expectedMemo);
+      if (decoded.needsCreate !== reviewedNeedsCreate ||
+          decoded.destination !== destination.trim() ||
+          decoded.amount !== normalized ||
+          decoded.assetCode !== selected.code ||
+          decoded.assetIssuer !== selected.asset?.issuer ||
+          !memoMatches) {
+        throw new Error("The signed withdrawal does not match the reviewed details. Go back and review it again.");
+      }
       await requestWithdrawOtp(token, walletId, signedXdr);
-      setCreatesAccount(needsCreate);
+      setCreatesAccount(reviewedNeedsCreate);
       setReserveInfo(info);
       const signedAt = clockMs();
       setNow(signedAt);
@@ -499,29 +524,7 @@ export function WithdrawModal({
       setNetworkExpired(false);
       setResigning(false);
       setResendAvailableAt(signedAt + RESEND_COOLDOWN_SECS * 1000);
-      try {
-        const decoded = TransactionBuilder.fromXDR(signedXdr, network.passphrase);
-        const t = decoded instanceof Transaction ? decoded : (decoded instanceof FeeBumpTransaction ? decoded.innerTransaction : decoded);
-        if (t.operations && t.operations[0]) {
-          const op = t.operations[0];
-          if (op.type === 'payment') {
-            setSignedTxDetails({
-              destination: op.destination,
-              amount: op.amount,
-              assetCode: op.asset.code,
-              assetIssuer: op.asset.isNative() ? undefined : op.asset.issuer,
-            });
-          } else if (op.type === 'createAccount') {
-            setSignedTxDetails({
-              destination: op.destination,
-              amount: op.startingBalance,
-              assetCode: 'XLM',
-            });
-          }
-        }
-      } catch {
-        // ignore decode errors
-      }
+      setSignedTxDetails(decoded);
       setPendingXdr(signedXdr);
     } catch (err) {
       const message = friendlyResultMessage(
@@ -595,6 +598,8 @@ export function WithdrawModal({
     setError(null);
     setResigning(resign);
     setReviewed(false);
+    setReviewedAmount(null);
+    setSignedTxDetails(null);
   }
 
   if (result) {
@@ -653,13 +658,19 @@ export function WithdrawModal({
             {selected.asset && <span className="ml-1 break-all font-mono text-foreground">({selected.asset.issuer})</span>}
           </p>
           <p className="text-muted">
-            Amount: <span className="text-foreground">{amount} {selected.code}</span>
+            Amount: <span className="text-foreground">{reviewedAmount ?? amount} {selected.code}</span>
           </p>
+          {!selected.asset && (
+            <p className="text-muted">
+              Remaining after withdrawal: <span className="text-foreground">{formatStroops(spendableStroops - (reviewedAmount ? reviewedAmountStroops : BigInt(0)))} XLM</span>
+              <span className="ml-1">({reserveIsExact(reserveInfo) ? "" : "about "}{formatStroops(reserveStroops ?? BigInt(0))} XLM minimum reserve, plus network fee)</span>
+            </p>
+          )}
           {createsAccount && (
             <p className="text-warning">This will create the account.</p>
           )}
           <p className="text-muted">
-            Fee: <span className="text-foreground">{reserveInfo ? (getFeeStroops(reserveInfo) / 10000000).toFixed(7) : "0.0000100"} XLM</span>
+            Fee: <span className="text-foreground">{feeDisplay}{feeDisplay.startsWith("Unavailable") ? "" : " XLM"}</span>
           </p>
           {createsAccount && (
             <p className="text-warning">
@@ -958,7 +969,7 @@ export function WithdrawModal({
           />
           <p className="mt-1 text-[11px] text-muted">
             {memoType === "text"
-              ? "Text memos are limited to 28 characters."
+              ? `${new TextEncoder().encode(memo).length}/28 bytes used. Text memos are limited to 28 UTF-8 bytes.`
               : "Numeric memo ID (up to 64 bits). Exchanges/custodians may require this to credit deposits."}
           </p>
         </div>

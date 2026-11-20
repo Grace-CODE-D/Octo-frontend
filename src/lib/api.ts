@@ -60,9 +60,28 @@ export function path(
 
 export async function apiFetch<T>(
   path: string,
-  options: RequestInit & { token?: string; signal?: AbortSignal; timeoutMs?: number } = {},
+  options: RequestInit & {
+    token?: string;
+    signal?: AbortSignal;
+    timeoutMs?: number;
+    /**
+     * Whether a 401 on this authenticated request means the session has expired.
+     *
+     * Defaults to `true`. Pass `false` for endpoints that verify a secret as part of the
+     * request (e.g. `changePassword`, `disableTotp`): a wrong secret commonly answers 401,
+     * and treating that as expiry would sign the user out and wipe local backups.
+     */
+    authFailureSignsOut?: boolean;
+  } = {},
 ): Promise<T> {
-  const { token, signal: callerSignal, headers, timeoutMs = DEFAULT_TIMEOUT_MS, ...rest } = options;
+  const {
+    token,
+    signal: callerSignal,
+    headers,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    authFailureSignsOut = true,
+    ...rest
+  } = options;
 
   // Combine caller signal with a hard timeout so hung connections don't spin forever.
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
@@ -106,8 +125,9 @@ export async function apiFetch<T>(
 
   if (!res.ok) {
     // On 401 for authenticated requests, broadcast a session-expired event so useAuth can
-    // redirect once regardless of how many concurrent requests are in-flight.
-    if (res.status === 401 && token) {
+    // redirect once regardless of how many concurrent requests are in-flight. Callers that
+    // verify a secret opt out, since a wrong secret also answers 401.
+    if (res.status === 401 && token && authFailureSignsOut) {
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("session-expired"));
       }
@@ -166,6 +186,7 @@ export function disableTotp(token: string, password: string): Promise<void> {
   return apiFetch<void>("/auth/2fa/disable", {
     method: "POST",
     token,
+    authFailureSignsOut: false,
     body: JSON.stringify({ password }),
   });
 }

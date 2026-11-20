@@ -24,6 +24,8 @@ export function changePassword(token: string, currentPassword: string, newPasswo
   return apiFetch<{ changed: boolean }>("/v1/auth/change-password", {
     method: "POST",
     token,
+    // A wrong current password commonly answers 401; that must not sign the user out.
+    authFailureSignsOut: false,
     body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
   });
 }

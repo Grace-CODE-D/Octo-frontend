@@ -87,4 +87,38 @@ describe("apiFetch", () => {
     const headers = init.headers as Record<string, string>;
     expect(headers["authorization"]).toBe("Bearer tok_123");
   });
+
+  it("does not dispatch session-expired on 401 when authFailureSignsOut is false", async () => {
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    vi.mocked(fetch).mockResolvedValue(
+      makeResponse(401, { statusCode: 401, message: "wrong current password", data: null }),
+    );
+    const err = await apiFetch("/test", {
+      token: "tok_123",
+      authFailureSignsOut: false,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).status).toBe(401);
+    expect((err as ApiError).message).toBe("wrong current password");
+    const expiredEvents = dispatchSpy.mock.calls.filter(
+      ([event]) => (event as Event).type === "session-expired",
+    );
+    expect(expiredEvents).toHaveLength(0);
+    dispatchSpy.mockRestore();
+  });
+
+  it("dispatches session-expired exactly once on 401 with the default option", async () => {
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    vi.mocked(fetch).mockResolvedValue(
+      makeResponse(401, { statusCode: 401, message: "token expired", data: null }),
+    );
+    const err = await apiFetch("/test", { token: "tok_123" }).catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).status).toBe(401);
+    const expiredEvents = dispatchSpy.mock.calls.filter(
+      ([event]) => (event as Event).type === "session-expired",
+    );
+    expect(expiredEvents).toHaveLength(1);
+    dispatchSpy.mockRestore();
+  });
 });
