@@ -167,6 +167,76 @@ export function txExpiresAt(xdr: string, networkPassphrase: string): number | nu
   return maxTime > 0 ? maxTime * 1000 : null;
 }
 
+export type SignedWithdrawalDetails = {
+  operationType: "payment" | "createAccount";
+  needsCreate: boolean;
+  destination: string;
+  amount: string;
+  assetCode: string;
+  assetIssuer?: string;
+  memo?: Memo;
+};
+
+/** Decode and describe only the payment forms this withdrawal flow is allowed to sign. */
+export function describeSignedWithdrawal(
+  xdr: string,
+  networkPassphrase: string,
+): SignedWithdrawalDetails {
+  let decoded: ReturnType<typeof TransactionBuilder.fromXDR>;
+  try {
+    decoded = TransactionBuilder.fromXDR(xdr, networkPassphrase);
+  } catch {
+    throw new Error("The signed withdrawal could not be decoded. Discard it and sign again.");
+  }
+  const transaction = "innerTransaction" in decoded ? decoded.innerTransaction : decoded;
+  if (transaction.operations.length !== 1) {
+    throw new Error("The signed withdrawal must contain exactly one supported operation.");
+  }
+  const operation = transaction.operations[0] as unknown as {
+    type?: string;
+    destination?: string;
+    amount?: string;
+    startingBalance?: string;
+    asset?: { code?: string; issuer?: string; isNative?: () => boolean };
+  };
+  const memoValue = transaction.memo as unknown as { type?: string; value?: unknown };
+  const memo = memoValue.type === "text"
+    ? { type: "text" as const, text: String(memoValue.value ?? "") }
+    : memoValue.type === "id"
+      ? { type: "id" as const, id: String(memoValue.value ?? "") }
+      : undefined;
+  if (memoValue.type !== "none" && memoValue.type !== "text" && memoValue.type !== "id") {
+    throw new Error("The signed withdrawal contains an unsupported memo type.");
+  }
+
+  if (operation.type === "payment" && operation.destination && operation.amount && operation.asset) {
+    const native = operation.asset.isNative?.() === true;
+    if (!native && (!operation.asset.code || !operation.asset.issuer)) {
+      throw new Error("The signed withdrawal contains a malformed asset.");
+    }
+    return {
+      operationType: "payment",
+      needsCreate: false,
+      destination: operation.destination,
+      amount: operation.amount,
+      assetCode: native ? "XLM" : String(operation.asset.code ?? ""),
+      ...(native ? {} : { assetIssuer: String(operation.asset.issuer ?? "") }),
+      ...(memo ? { memo } : {}),
+    };
+  }
+  if (operation.type === "createAccount" && operation.destination && operation.startingBalance) {
+    return {
+      operationType: "createAccount",
+      needsCreate: true,
+      destination: operation.destination,
+      amount: operation.startingBalance,
+      assetCode: "XLM",
+      ...(memo ? { memo } : {}),
+    };
+  }
+  throw new Error("The signed withdrawal contains an unsupported or malformed operation.");
+}
+
 /**
  * Build an UNSIGNED payment, for flows where a third-party wallet (e.g. Freighter) signs instead
  * of an in-browser Keypair — used by the public payment-link pay page.
