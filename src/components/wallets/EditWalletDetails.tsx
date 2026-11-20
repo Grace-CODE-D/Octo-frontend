@@ -1,7 +1,7 @@
 "use client";
 
 import { errorMessage } from "@/lib/api";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Modal } from "@/components/dashboard/Modal";
 import type { WalletView } from "@/lib/wallets";
 import {
@@ -25,6 +25,9 @@ export function EditWalletDetails({
   wallet: WalletView | null;
   onSaved: (wallet: WalletView) => void;
 }) {
+  const labelId = useId();
+  const descriptionId = useId();
+  const errorId = useId();
   const [open, setOpen] = useState(false);
   const [label, setLabel] = useState("");
   const [description, setDescription] = useState("");
@@ -68,26 +71,32 @@ export function EditWalletDetails({
         <Modal title="Edit wallet details" onClose={() => setOpen(false)}>
           <form onSubmit={save} className="space-y-4">
             <div>
-              <label className="text-xs text-muted">Wallet name</label>
+              <label htmlFor={labelId} className="text-xs text-muted">Wallet name</label>
               <input
+                id={labelId}
                 value={label}
                 maxLength={MAX_WALLET_LABEL}
                 onChange={(e) => setLabel(e.target.value)}
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? errorId : undefined}
                 className={INPUT}
               />
             </div>
             <div>
-              <label className="text-xs text-muted">Wallet description</label>
+              <label htmlFor={descriptionId} className="text-xs text-muted">Wallet description</label>
               <textarea
+                id={descriptionId}
                 value={description}
                 maxLength={MAX_WALLET_DESCRIPTION}
                 rows={3}
                 onChange={(e) => setDescription(e.target.value)}
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? errorId : undefined}
                 className={`${INPUT} resize-none`}
               />
             </div>
             {error && (
-              <p className="rounded-lg border border-danger-border bg-danger-bg px-3 py-2 text-sm text-danger">
+              <p id={errorId} role="alert" className="rounded-lg border border-danger-border bg-danger-bg px-3 py-2 text-sm text-danger">
                 {error}
               </p>
             )}

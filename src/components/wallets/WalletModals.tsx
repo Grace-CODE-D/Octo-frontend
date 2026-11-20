@@ -1,14 +1,15 @@
 "use client";
 
 import { formatCountdownSeconds } from "@/lib/format";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { OtpInput } from "@/components/auth/OtpInput";
 import { Modal, CopyField, HighlightedAddress } from "@/components/dashboard/Modal";
 import { DepositQrCodes } from "@/components/qr/DepositQrCodes";
 import { errorMessage, errorText } from "@/lib/api";
 import { usdcForNetwork, type Address, type Balance } from "@/lib/wallets";
-import { explorerTxUrl } from "@/lib/network";
+import { explorerAccountUrl, explorerTxUrl, network } from "@/lib/network";
+import { Transaction, TransactionBuilder, FeeBumpTransaction } from "@stellar/stellar-base";
 import {
   unlockWallet, getSigningInfo, submitSigned, requestWithdrawOtp, confirmWithdraw,
   getAccountExists, buildSignedPayment, buildSignedChangeTrust, buildSignedCreateAccount,
@@ -25,26 +26,58 @@ export function TrustlineModal({
   token,
   walletId,
   walletAddress,
+  balances,
   onClose,
   onDone,
 }: {
   token: string;
   walletId: string;
   walletAddress: string;
+  balances: Balance[];
   onClose: () => void;
   onDone: () => void;
 }) {
+  const passwordId = useId();
+  const errorId = useId();
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [signingInfo, setSigningInfo] = useState<SigningInfo | null>(null);
   const [result, setResult] = useState<{
     status: string;
     hash: string | null;
     detail: string | null;
-  } | null>(null);
+  }> | null>(null);
 
-  async function submit() {
+  useEffect(() => {
+    getSigningInfo(token, walletId).then(setSigningInfo).catch(() => setSigningInfo(null));
+  }, [token, walletId]);
+
+  const passphrase = signingInfo?.network_passphrase ?? network.passphrase;
+  const usdc = usdcForNetwork(passphrase);
+  const hasTrustline = balances.some(
+    (balance) => balance.asset_code === usdc.code && balance.asset_issuer === usdc.issuer,
+  );
+  const trustlineCount = balances.filter((balance) => balance.asset_type !== "native").length;
+  const nativeBalance = balances.find((balance) => balance.asset_type === "native")?.balance ?? "0";
+  const parsedNativeBalance = parseAmount(nativeBalance);
+  const nativeBalanceStroops = parsedNativeBalance.ok ? parsedNativeBalance.stroops : BigInt(0);
+  const requiredStroops =
+    minimumBalanceStroops(signingInfo, trustlineCount + 1) +
+    BigInt(signingInfo ? getFeeStroops(signingInfo) : 100);
+  const shortfallStroops = requiredStroops > nativeBalanceStroops
+    ? requiredStroops - nativeBalanceStroops
+    : BigInt(0);
+  const insufficientReserve = shortfallStroops > BigInt(0);
+
+  async function submit(event?: React.FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
     setError(null);
+    if (hasTrustline) return;
+    if (insufficientReserve) {
+      setError(`Add at least ${formatStroops(shortfallStroops)} XLM to cover the new trustline reserve and transaction fee.`);
+      return;
+    }
     if (!password) {
       setError("Enter your wallet password to sign.");
       return;
@@ -54,8 +87,7 @@ export function TrustlineModal({
       // Unlock the key locally (decrypt with password), build + sign the ChangeTrust in the
       // browser, then relay the signed XDR. The private key never leaves this device.
       const keypair = await unlockWallet(token, walletId, password, walletAddress);
-      const info = await getSigningInfo(token, walletId);
-      const usdc = usdcForNetwork(info.network_passphrase);
+      const info = signingInfo ?? await getSigningInfo(token, walletId);
       const signedXdr = buildSignedChangeTrust(keypair, info, {
         asset: { code: usdc.code, issuer: usdc.issuer },
       });
@@ -131,35 +163,51 @@ export function TrustlineModal({
           Asset: <span className="text-foreground">USDC</span>
         </p>
         <p className="text-muted">
-          Issuer resolved from your wallet&apos;s network at signing time.
+          Issuer: <span className="break-all font-mono text-foreground">{usdc.issuer}</span>
         </p>
+        <a href={explorerAccountUrl(usdc.issuer)} target="_blank" rel="noopener noreferrer" className="inline-block text-burgundy-bright underline">View issuer on Stellar Expert</a>
       </div>
 
-      <div className="mt-4">
-        <label className="text-xs text-muted">Wallet password (to sign)</label>
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Your encryption password"
-          autoComplete="current-password"
-          className="mt-1 w-full rounded-lg border border-border bg-surface-sunken px-3 py-2 text-sm text-foreground placeholder:text-muted/50 focus:border-burgundy-bright focus:outline-none"
-        />
-      </div>
-
-      {error && (
-        <p className="mt-4 rounded-lg border border-burgundy/40 bg-burgundy/10 px-3 py-2 text-sm text-burgundy-bright">
-          {error}
+      {hasTrustline ? (
+        <p className="mt-4 rounded-lg border border-border bg-surface-sunken px-3 py-2 text-sm text-foreground" role="status">
+          This wallet already holds a USDC trustline.
         </p>
+      ) : insufficientReserve ? (
+        <p className="mt-4 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning" role="status">
+          Add at least {formatStroops(shortfallStroops)} XLM to cover the new trustline reserve and transaction fee before signing.
+        </p>
+      ) : (
+        <form onSubmit={submit}>
+          <div className="mt-4">
+            <label htmlFor={passwordId} className="text-xs text-muted">Wallet password (to sign)</label>
+            <input
+              id={passwordId}
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Your encryption password"
+              autoComplete="current-password"
+              aria-invalid={Boolean(error)}
+              aria-describedby={error ? errorId : undefined}
+              className="mt-1 w-full rounded-lg border border-border bg-surface-sunken px-3 py-2 text-sm text-foreground placeholder:text-muted/50 focus:border-burgundy-bright focus:outline-none"
+            />
+          </div>
+
+          {error && (
+            <p id={errorId} role="alert" className="mt-4 rounded-lg border border-burgundy/40 bg-burgundy/10 px-3 py-2 text-sm text-burgundy-bright">
+              {error}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="mt-5 w-full rounded-lg glass-btn-primary py-2.5 text-sm font-semibold disabled:opacity-60"
+          >
+            {submitting ? "Signing…" : "Add trustline"}
+          </button>
+        </form>
       )}
-
-      <button
-        onClick={submit}
-        disabled={submitting}
-        className="mt-5 w-full rounded-lg glass-btn-primary py-2.5 text-sm font-semibold disabled:opacity-60"
-      >
-        {submitting ? "Signing…" : "Add trustline"}
-      </button>
     </Modal>
   );
 }
@@ -246,6 +294,11 @@ export function WithdrawModal({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const destinationId = useId();
+  const amountId = useId();
+  const memoId = useId();
+  const passwordId = useId();
+  const errorId = useId();
   // Build the selectable asset list: XLM first, then any credit asset the
   // wallet holds a trustline for (USDC, etc.).
   const trustlines = balances.filter(
@@ -630,107 +683,36 @@ export function WithdrawModal({
             </p>
           )}
         </div>
-        <div className="mt-4">
-          <label className="text-xs text-muted">Wallet password (to sign)</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Your encryption password"
-            autoComplete="current-password"
-            className="mt-1 w-full rounded-lg border border-border bg-surface-sunken px-3 py-2 text-sm text-foreground placeholder:text-muted/50 focus:border-burgundy-bright focus:outline-none"
-          />
-        </div>
-        {error && (
-          <p className="mt-3 rounded-lg border border-burgundy/40 bg-burgundy/10 px-3 py-2 text-sm text-burgundy-bright">
-            {error}
-          </p>
-        )}
-        <button
-          onClick={signAndRequestOtp}
-          disabled={submitting}
-          className="mt-5 w-full rounded-lg glass-btn-primary py-2.5 text-sm font-semibold disabled:opacity-60"
-        >
-          {submitting ? "Signing..." : "Sign & continue"}
-        </button>
-        <button
-          onClick={() => { setReviewed(false); setError(null); }}
-          className="mt-3 w-full text-center text-xs text-muted hover:text-foreground"
-        >
-          Back to form
-        </button>
-      </Modal>
-    );
-  }
-
-
-  if (reviewed && !pendingXdr) {
-    return (
-      <Modal title="Review withdrawal" onClose={() => { setReviewed(false); setError(null); }}>
-        <p className="text-sm text-muted">
-          Review exactly what you are about to sign before entering your wallet password.
-        </p>
-        <div className="mt-4 space-y-2 rounded-lg border border-border bg-surface-sunken px-3 py-3 text-xs">
-          <div className="flex flex-col gap-1">
-            <span className="text-muted">Destination:</span>
-            <HighlightedAddress address={destination} />
+        <form onSubmit={(event) => { event.preventDefault(); void signAndRequestOtp(); }}>
+          <div className="mt-4">
+            <label htmlFor={passwordId} className="text-xs text-muted">Wallet password (to sign)</label>
+            <input
+              id={passwordId}
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Your encryption password"
+              autoComplete="current-password"
+              aria-invalid={Boolean(error)}
+              aria-describedby={error ? errorId : undefined}
+              className="mt-1 w-full rounded-lg border border-border bg-surface-sunken px-3 py-2 text-sm text-foreground placeholder:text-muted/50 focus:border-burgundy-bright focus:outline-none"
+            />
           </div>
-          <p className="text-muted">
-            Asset: <span className="text-foreground">{selected.code}</span>
-            {selected.asset && <span className="ml-1 break-all font-mono text-foreground">({selected.asset.issuer})</span>}
-          </p>
-          <p className="text-muted">
-            Amount: <span className="text-foreground">{reviewedAmount ?? amount} {selected.code}</span>
-          </p>
-          {!selected.asset && (
-            <p className="text-muted">
-              Remaining after withdrawal: <span className="text-foreground">{formatStroops(spendableStroops - (reviewedAmount ? reviewedAmountStroops : BigInt(0)))} XLM</span>
-              <span className="ml-1">({reserveIsExact(reserveInfo) ? "" : "about "}{formatStroops(reserveStroops ?? BigInt(0))} XLM minimum reserve, plus network fee)</span>
+          {error && (
+            <p id={errorId} role="alert" className="mt-3 rounded-lg border border-burgundy/40 bg-burgundy/10 px-3 py-2 text-sm text-burgundy-bright">
+              {error}
             </p>
           )}
-          {createsAccount && (
-            <p className="text-warning">
-              This will create the account (account creation transaction).
-            </p>
-          )}
-          <p className="text-muted">
-            Fee: <span className="text-foreground">{feeDisplay}{feeDisplay.startsWith("Unavailable") ? "" : " XLM"}</span>
-          </p>
-          {createsAccount && (
-            <p className="text-warning">
-              Account creation (new account requires minimum balance).
-            </p>
-          )}
-          {memo.trim() && (
-            <p className="text-muted">
-              Memo: {memoType === "id" ? "ID " : "Text "}{memo.trim()}
-            </p>
-          )}
-        </div>
-        <div className="mt-4">
-          <label className="text-xs text-muted">Wallet password (to sign)</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Your encryption password"
-            autoComplete="current-password"
-            className="mt-1 w-full rounded-lg border border-border bg-surface-sunken px-3 py-2 text-sm text-foreground placeholder:text-muted/50 focus:border-burgundy-bright focus:outline-none"
-          />
-        </div>
-        {error && (
-          <p className="mt-3 rounded-lg border border-burgundy/40 bg-burgundy/10 px-3 py-2 text-sm text-burgundy-bright">
-            {error}
-          </p>
-        )}
+          <button
+            type="submit"
+            disabled={submitting}
+            className="mt-5 w-full rounded-lg glass-btn-primary py-2.5 text-sm font-semibold disabled:opacity-60"
+          >
+            {submitting ? "Signing..." : "Sign & continue"}
+          </button>
+        </form>
         <button
-          onClick={signAndRequestOtp}
-          disabled={submitting}
-          className="mt-5 w-full rounded-lg glass-btn-primary py-2.5 text-sm font-semibold disabled:opacity-60"
-        >
-          {submitting ? "Signing..." : "Sign & continue"}
-        </button>
-        <button
+          type="button"
           onClick={() => { setReviewed(false); setError(null); }}
           className="mt-3 w-full text-center text-xs text-muted hover:text-foreground"
         >
@@ -740,33 +722,6 @@ export function WithdrawModal({
     );
   }
 
-
-  if (pendingXdr && expired) {
-    return (
-      <Modal title="Withdrawal expired" onClose={onClose}>
-        <div className="text-center" role="status">
-          <p className="text-3xl text-warning">
-            <span aria-hidden="true">!</span>
-            <span className="sr-only">Expired</span>
-          </p>
-          <p className="mt-2 text-sm text-muted">
-            For your security, a signed withdrawal is only valid for{" "}
-            {Math.round(TX_TIMEOUT_SECONDS / 60)} minutes, and this one ran out before
-            the code was confirmed. <span className="text-foreground">Nothing was sent.</span>
-          </p>
-          <p className="mt-2 text-sm text-muted">
-            Sign again with your password and we&apos;ll email you a new code.
-          </p>
-          <button
-            onClick={() => discardSigned(true)}
-            className="mt-6 w-full rounded-lg glass-btn-primary py-2.5 text-sm font-semibold"
-          >
-            Sign again
-          </button>
-        </div>
-      </Modal>
-    );
-  }
 
   if (pendingXdr) {
     return (
@@ -832,9 +787,18 @@ export function WithdrawModal({
         </div>
 
         {expired && (
-          <p className="mt-4 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
-            This signed withdrawal has expired. Go back and sign it again to get a new code.
-          </p>
+          <div className="mt-4">
+            <p role="alert" className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
+              This signed withdrawal expired. Nothing was sent.
+            </p>
+            <button
+              type="button"
+              onClick={() => discardSigned(true)}
+              className="mt-3 w-full rounded-lg glass-btn-primary py-2.5 text-sm font-semibold"
+            >
+              Sign again
+            </button>
+          </div>
         )}
 
         {error && (
@@ -850,13 +814,12 @@ export function WithdrawModal({
         >
           {submitting ? "Confirming…" : "Verify & withdraw"}
         </button>
-        {!expired && (
-          <p className="mt-4 text-center text-xs text-muted">
+        <p className="mt-4 text-center text-xs text-muted">
             Didn&apos;t get a code?{" "}
             <button
               type="button"
               onClick={resendOtp}
-              disabled={resending || resendCooldown > 0}
+              disabled={expired || resending || resendCooldown > 0}
               className="font-semibold text-foreground hover:text-burgundy-bright disabled:cursor-not-allowed disabled:opacity-50"
             >
               {resending
@@ -865,9 +828,9 @@ export function WithdrawModal({
                   ? `Resend in ${resendCooldown}s`
                   : "Resend code"}
             </button>
-          </p>
-        )}
+        </p>
         <button
+          type="button"
           onClick={() => discardSigned(false)}
           className="mt-3 w-full text-center text-xs text-muted hover:text-foreground"
         >
@@ -903,7 +866,7 @@ export function WithdrawModal({
         </p>
       )}
 
-      <div className="mt-5 space-y-4">
+      <form className="mt-5 space-y-4" onSubmit={(event) => { event.preventDefault(); void proceedToReview(); }}>
         <div>
           <label className="text-xs text-muted">Asset</label>
           <div className="mt-1 flex flex-wrap gap-2">
@@ -939,8 +902,9 @@ export function WithdrawModal({
           )}
         </div>
         <div>
-          <label className="text-xs text-muted">Destination address</label>
+          <label htmlFor={destinationId} className="text-xs text-muted">Destination address</label>
           <input
+            id={destinationId}
             value={destination}
             onChange={(e) => setDestination(e.target.value.trim())}
             placeholder="G… or M…"
@@ -949,7 +913,7 @@ export function WithdrawModal({
         </div>
         <div>
           <div className="flex items-center justify-between">
-            <label className="text-xs text-muted">Amount ({selected.code})</label>
+            <label htmlFor={amountId} className="text-xs text-muted">Amount ({selected.code})</label>
             <button
               type="button"
               onClick={() => setAmount(formatStroops(spendableStroops))}
@@ -960,6 +924,7 @@ export function WithdrawModal({
             </button>
           </div>
           <input
+            id={amountId}
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             inputMode="decimal"
@@ -969,7 +934,7 @@ export function WithdrawModal({
         </div>
         <div>
           <div className="flex items-center justify-between">
-            <label className="text-xs text-muted">Memo (optional)</label>
+            <label htmlFor={memoId} className="text-xs text-muted">Memo (optional)</label>
             <div className="flex gap-1">
               <button
                 type="button"
@@ -996,6 +961,7 @@ export function WithdrawModal({
             </div>
           </div>
           <input
+            id={memoId}
             value={memo}
             onChange={(e) => setMemo(e.target.value.trim())}
             placeholder={memoType === "text" ? "e.g. Invoice 123" : "e.g. 12345"}
@@ -1008,13 +974,16 @@ export function WithdrawModal({
           </p>
         </div>
         <div>
-          <label className="text-xs text-muted">Wallet password (to sign)</label>
+          <label htmlFor={passwordId} className="text-xs text-muted">Wallet password (to sign)</label>
           <input
+            id={passwordId}
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Your encryption password"
             autoComplete="current-password"
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? errorId : undefined}
             className="mt-1 w-full rounded-lg border border-border bg-surface-sunken px-3 py-2 text-sm text-foreground placeholder:text-muted/50 focus:border-burgundy-bright focus:outline-none"
           />
           <p className="mt-1 text-[11px] text-muted">
@@ -1024,19 +993,19 @@ export function WithdrawModal({
         </div>
 
         {error && (
-          <p className="rounded-lg border border-burgundy/40 bg-burgundy/10 px-3 py-2 text-sm text-burgundy-bright">
+          <p id={errorId} role="alert" className="rounded-lg border border-burgundy/40 bg-burgundy/10 px-3 py-2 text-sm text-burgundy-bright">
             {error}
           </p>
         )}
 
         <button
-          onClick={proceedToReview}
+          type="submit"
           disabled={submitting}
           className="w-full rounded-lg glass-btn-primary py-2.5 text-sm font-semibold disabled:opacity-60"
         >
           {submitting ? "Checking…" : resigning ? "Review & sign again" : "Review & withdraw"}
         </button>
-      </div>
+      </form>
     </Modal>
   );
 }

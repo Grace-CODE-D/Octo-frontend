@@ -459,6 +459,7 @@ export default function WalletOverview({
           token={token}
           walletId={id}
           walletAddress={wallet.address}
+          balances={balances}
           onClose={() => setShowTrustline(false)}
           onDone={() => {
             setShowTrustline(false);
