@@ -700,7 +700,13 @@ export default function PayPage({
           )}
         </div>
 
-        <div className="bg-white p-8">
+        {/*
+          Checkout is intentionally forced to the light theme: the payer flow is a
+          standalone, merchant-branded surface and must look identical regardless of
+          the merchant's or payer's OS theme. `data-theme="light"` pins the token
+          values from globals.css so every colour below resolves to the light palette.
+        */}
+        <div data-theme="light" className="bg-background p-8 text-foreground">
           {step === "loading" && (
             <div className="flex h-full items-center justify-center py-12">
               <OctoSpinner size={40} />
@@ -710,12 +716,12 @@ export default function PayPage({
           {step === "error" && (
             <div className="flex h-full items-center justify-center text-center">
               <div>
-                <p className="text-lg font-semibold text-gray-900">Couldn&apos;t load this payment link</p>
-                <p className="mt-2 text-sm text-gray-500">Check your connection and try again.</p>
+                <p className="text-lg font-semibold text-foreground">Couldn&apos;t load this payment link</p>
+                <p className="mt-2 text-sm text-muted">Check your connection and try again.</p>
                 <button
                   type="button"
                   onClick={() => setAttempt((n) => n + 1)}
-                  className="mt-4 rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                  className="mt-4 rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90"
                 >
                   Try again
                 </button>
@@ -726,8 +732,8 @@ export default function PayPage({
           {step === "not-found" && (
             <div className="flex h-full items-center justify-center text-center">
               <div>
-                <p className="text-lg font-semibold text-gray-900">Link not found</p>
-                <p className="mt-2 text-sm text-gray-500">
+                <p className="text-lg font-semibold text-foreground">Link not found</p>
+                <p className="mt-2 text-sm text-muted">
                   This payment link doesn&apos;t exist or is no longer active.
                 </p>
               </div>
@@ -748,10 +754,10 @@ export default function PayPage({
                     aria-invalid={amountError !== null}
                     aria-describedby={amountError !== null ? "payer-amount-error" : undefined}
                     placeholder="0.00"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-black"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-foreground"
                   />
                   {amountError !== null && (
-                    <p id="payer-amount-error" role="alert" className="mt-1 text-xs text-red-600">
+                    <p id="payer-amount-error" role="alert" className="mt-1 text-xs text-danger">
                       {amountError}
                     </p>
                   )}
@@ -770,7 +776,7 @@ export default function PayPage({
                   aria-required="true"
                   aria-invalid={nameInvalid}
                   aria-describedby="payer-info-hint payer-error"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-black"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-foreground"
                 />
               </Field>
 
@@ -788,12 +794,12 @@ export default function PayPage({
                   aria-required="true"
                   aria-invalid={emailInvalid}
                   aria-describedby="payer-info-hint payer-error"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-black"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-foreground"
                 />
               </Field>
 
               <div>
-                <p id="payer-info-hint" className="text-[11px] text-gray-500">
+                <p id="payer-info-hint" className="text-[11px] text-muted">
                   We use this to send you a confirmation of your payment.
                 </p>
                 <PayerPrivacyNotice merchantName={link.name} />
@@ -803,7 +809,7 @@ export default function PayPage({
                 <div
                   role="alertdialog"
                   aria-labelledby="restart-title"
-                  className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-xs text-amber-800"
+                  className="rounded-lg border border-warning-border bg-warning-bg px-3 py-3 text-xs text-warning"
                 >
                   <p id="restart-title" className="font-medium">
                     You may already have sent a payment to the previous address. Starting over
@@ -814,16 +820,16 @@ export default function PayPage({
                       type="button"
                       onClick={handleCheckPrevious}
                       disabled={checking}
-                      className="flex items-center gap-2 rounded-lg bg-black px-3 py-1.5 font-medium text-white hover:opacity-90 disabled:opacity-50"
+                      className="flex items-center gap-2 rounded-lg bg-foreground px-3 py-1.5 font-medium text-background hover:opacity-90 disabled:opacity-50"
                     >
-                      {checking && <OctoSpinner size={12} className="text-white" />}
+                      {checking && <OctoSpinner size={12} className="text-background" />}
                       Check status first
                     </button>
                     <button
                       type="button"
                       onClick={handleConfirmRestart}
                       disabled={submitting}
-                      className="rounded-lg border border-amber-400 px-3 py-1.5 font-medium text-amber-800 hover:border-amber-600 disabled:opacity-50"
+                      className="rounded-lg border border-warning-border px-3 py-1.5 font-medium text-warning hover:border-warning disabled:opacity-50"
                     >
                       Start over
                     </button>
@@ -832,32 +838,32 @@ export default function PayPage({
               )}
 
               {previousIntent && (
-                <p className="text-[11px] text-gray-500">
+                <p className="text-[11px] text-muted">
                   Already paid the previous address?{" "}
                   <button
                     type="button"
                     onClick={handleCheckPrevious}
                     disabled={checking}
-                    className="font-medium text-gray-900 underline hover:no-underline disabled:opacity-50"
+                    className="font-medium text-foreground underline hover:no-underline disabled:opacity-50"
                   >
                     Check its status
                   </button>
                 </p>
               )}
 
-              {checkMessage && <p className="text-[11px] text-gray-500">{checkMessage}</p>}
+              {checkMessage && <p className="text-[11px] text-muted">{checkMessage}</p>}
 
               {error && <ErrorBanner id="payer-error" message={error} />}
 
               <button
                 type="submit"
                 disabled={submitting || restartPrompt !== null}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-black py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-foreground py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
               >
-                {submitting && <OctoSpinner size={16} className="text-white" />}
+                {submitting && <OctoSpinner size={16} className="text-background" />}
                 {submitting ? "Please wait…" : "Continue"}
               </button>
-              <p className="text-center text-[11px] text-gray-400">
+              <p className="text-center text-[11px] text-muted">
                 Payments settle on the Stellar network. Octo never asks for your wallet&apos;s
                 secret key.
               </p>
@@ -884,7 +890,7 @@ export default function PayPage({
                   type="button"
                   onClick={() => setStep("form")}
                   disabled={freighterBusy}
-                  className="text-xs font-medium text-gray-500 hover:text-gray-900 disabled:opacity-50"
+                  className="text-xs font-medium text-muted hover:text-foreground disabled:opacity-50"
                 >
                   <span aria-hidden="true">‹ </span>Back
                 </button>
@@ -894,8 +900,8 @@ export default function PayPage({
                 <div
                   className={`rounded-lg border px-3 py-2 text-xs ${
                     remainingMs <= EXPIRY_WARNING_MS
-                      ? "border-amber-300 bg-amber-50 text-amber-700"
-                      : "border-gray-200 bg-gray-50 text-gray-600"
+                      ? "border-warning-border bg-warning-bg text-warning"
+                      : "border-border bg-muted-bg text-muted"
                   }`}
                 >
                   {remainingMs <= EXPIRY_WARNING_MS ? (
@@ -913,9 +919,9 @@ export default function PayPage({
                 </div>
               )}
 
-              <div className="rounded-lg border border-gray-200 p-4">
-                <p className="text-xs text-gray-500">Amount</p>
-                <p className="mt-1 text-sm font-medium text-gray-900">
+              <div className="rounded-lg border border-border p-4">
+                <p className="text-xs text-muted">Amount</p>
+                <p className="mt-1 text-sm font-medium text-foreground">
                   ${formatStroops(intent.amount_usdc_stroops, 2)}
                 </p>
               </div>
@@ -923,17 +929,17 @@ export default function PayPage({
               {/* Deposit address and QR are hidden once expired so nothing can be sent to a dead intent. */}
               {!isExpired && (
               <div>
-                <p className="text-sm font-medium text-gray-900">Wallet Transfer</p>
-                <p className="mt-1 text-[11px] text-gray-500">
+                <p className="text-sm font-medium text-foreground">Wallet Transfer</p>
+                <p className="mt-1 text-[11px] text-muted">
                   Send USDC from any Stellar wallet to the address below.
                 </p>
-                <div className="mt-2 flex items-center gap-2 rounded-lg border border-gray-300 bg-gray-50 px-3 py-2">
-                  <span className="flex-1 truncate font-mono text-xs text-gray-900">
+                <div className="mt-2 flex items-center gap-2 rounded-lg border border-border bg-muted-bg px-3 py-2">
+                  <span className="flex-1 truncate font-mono text-xs text-foreground">
                     {intent.deposit_address}
                   </span>
                   <CopyButton
                     value={intent.deposit_address}
-                    className="text-xs text-gray-500 hover:text-gray-900"
+                    className="text-xs text-muted hover:text-foreground"
                   />
                 </div>
                 <div className="mt-3 flex justify-center">
@@ -948,39 +954,39 @@ export default function PayPage({
                     label="Scan with a Stellar wallet to pay the exact amount"
                   />
                 </div>
-                <p className="mt-2 text-[11px] text-gray-500">
+                <p className="mt-2 text-[11px] text-muted">
                   Some exchanges don&apos;t support M… addresses; pay from a self-custody wallet.
                 </p>
                 <button
                   type="button"
                   onClick={handleCheckPayment}
                   disabled={checking}
-                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 py-2 text-xs font-medium text-gray-900 transition-colors hover:border-black disabled:opacity-50"
+                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-border py-2 text-xs font-medium text-foreground transition-colors hover:border-foreground disabled:opacity-50"
                 >
                   {checking && <OctoSpinner size={14} />}
                   {checking ? "Checking…" : "I've sent the payment — check now"}
                 </button>
                 {checkMessage && (
-                  <p className="mt-2 text-[11px] text-gray-500">{checkMessage}</p>
+                  <p className="mt-2 text-[11px] text-muted">{checkMessage}</p>
                 )}
               </div>
               )}
 
               {!isExpired && (
-              <div className="flex items-center gap-3 text-[11px] text-gray-400">
-                <div className="h-px flex-1 bg-gray-200" />
+              <div className="flex items-center gap-3 text-[11px] text-muted">
+                <div className="h-px flex-1 bg-border" />
                 OR
-                <div className="h-px flex-1 bg-gray-200" />
+                <div className="h-px flex-1 bg-border" />
               </div>
               )}
 
               {!isExpired && (
               <div>
-                <p className="text-sm font-medium text-gray-900">Connect Wallet</p>
+                <p className="text-sm font-medium text-foreground">Connect Wallet</p>
                 {stillConfirming ? (
                   <div
                     role="status"
-                    className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700"
+                    className="mt-2 rounded-lg border border-warning-border bg-warning-bg px-3 py-2 text-xs text-warning"
                   >
                     <p>We&apos;re still confirming your payment…</p>
                     <p className="mt-1">
@@ -992,14 +998,14 @@ export default function PayPage({
                     type="button"
                     onClick={handleFreighterPay}
                     disabled={freighterBusy}
-                    className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 py-2.5 text-sm font-medium text-gray-900 transition-colors hover:border-black disabled:opacity-50"
+                    className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-border py-2.5 text-sm font-medium text-foreground transition-colors hover:border-foreground disabled:opacity-50"
                   >
                     {freighterBusy && <OctoSpinner size={16} />}
                     {freighterBusy ? "Connecting…" : "Connect Freighter"}
                   </button>
                 )}
                 {signedTxHash && (
-                  <p className="mt-2 text-[11px] text-gray-500">
+                  <p className="mt-2 text-[11px] text-muted">
                     Signed transaction{" "}
                     <span className="font-mono" title={signedTxHash}>
                       {shortenHash(signedTxHash)}
@@ -1009,7 +1015,7 @@ export default function PayPage({
                       href={explorerTxUrl(signedTxHash)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="font-medium text-gray-900 underline hover:no-underline"
+                      className="font-medium text-foreground underline hover:no-underline"
                     >
                       View on Stellar Expert ↗
                     </a>
@@ -1020,7 +1026,7 @@ export default function PayPage({
 
               {error && <ErrorBanner message={error} />}
 
-              <p className="text-center text-[11px] text-gray-400">
+              <p className="text-center text-[11px] text-muted">
                 {pollStopped
                   ? "Stopped checking automatically — use “check now” once you've sent the payment."
                   : "Waiting for payment — this page updates automatically once it's received."}
@@ -1037,38 +1043,38 @@ export default function PayPage({
                 <span aria-hidden="true">✅</span>
                 <span className="sr-only">Success</span>
               </p>
-              <p className="mt-3 text-lg font-semibold text-gray-900">Payment received</p>
-              <p className="mt-2 text-sm text-gray-500">
+              <p className="mt-3 text-lg font-semibold text-foreground">Payment received</p>
+              <p className="mt-2 text-sm text-muted">
                 Thank you{payerName ? `, ${payerName}` : ""} — your payment has been
                 confirmed on-chain.
               </p>
 
-              <div className="mt-5 w-full rounded-lg border border-gray-200 p-4 text-left">
-                <p className="text-xs text-gray-500">Receipt</p>
+              <div className="mt-5 w-full rounded-lg border border-border p-4 text-left">
+                <p className="text-xs text-muted">Receipt</p>
                 {confirmedAmountStroops !== null && (
                   <div className="mt-2 flex items-center justify-between text-sm">
-                    <span className="text-gray-500">Amount</span>
-                    <span className="font-medium text-gray-900">
+                    <span className="text-muted">Amount</span>
+                    <span className="font-medium text-foreground">
                       ${formatStroops(confirmedAmountStroops, 2)}
                     </span>
                   </div>
                 )}
                 {link && (
                   <div className="mt-1 flex items-center justify-between text-sm">
-                    <span className="text-gray-500">Paid to</span>
-                    <span className="font-medium text-gray-900">{link.name}</span>
+                    <span className="text-muted">Paid to</span>
+                    <span className="font-medium text-foreground">{link.name}</span>
                   </div>
                 )}
                 {txRef && (
                   <div className="mt-1 flex items-center justify-between gap-2 text-sm">
-                    <span className="shrink-0 text-gray-500">Transaction</span>
+                    <span className="shrink-0 text-muted">Transaction</span>
                     <span className="flex min-w-0 items-center gap-1">
-                      <span className="truncate font-mono text-xs text-gray-900" title={txRef}>
+                      <span className="truncate font-mono text-xs text-foreground" title={txRef}>
                         {shortenHash(txRef)}
                       </span>
                       <CopyButton
                         value={txRef}
-                        className="shrink-0 text-xs text-gray-500 hover:text-gray-900"
+                        className="shrink-0 text-xs text-muted hover:text-foreground"
                       />
                     </span>
                   </div>
@@ -1078,7 +1084,7 @@ export default function PayPage({
                     href={explorerTxUrl(txRef)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="mt-3 inline-block text-xs font-medium text-gray-900 underline hover:no-underline"
+                    className="mt-3 inline-block text-xs font-medium text-foreground underline hover:no-underline"
                   >
                     View on Stellar Expert ↗
                   </a>
@@ -1088,7 +1094,7 @@ export default function PayPage({
               {returnUrl && (
                 <a
                   href={returnUrl}
-                  className="mt-4 w-full rounded-lg bg-black py-2.5 text-center text-sm font-medium text-white transition-opacity hover:opacity-90"
+                  className="mt-4 w-full rounded-lg bg-foreground py-2.5 text-center text-sm font-medium text-background transition-opacity hover:opacity-90"
                 >
                   Return to merchant
                 </a>
@@ -1110,18 +1116,18 @@ function StepHeader({ current }: { current: "Personal Information" | "Payment Me
           <span
             className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-medium ${
               s === current
-                ? "bg-black text-white"
+                ? "bg-foreground text-background"
                 : steps.indexOf(current) > i
-                  ? "bg-gray-900 text-white"
-                  : "bg-gray-200 text-gray-500"
+                  ? "bg-foreground text-background"
+                  : "bg-muted-bg text-muted"
             }`}
           >
             {i + 1}
           </span>
-          <span className={s === current ? "font-medium text-gray-900" : "text-gray-400"}>
+          <span className={s === current ? "font-medium text-foreground" : "text-muted"}>
             {s}
           </span>
-          {i === 0 && <span className="mx-1 h-px w-8 bg-gray-200" />}
+          {i === 0 && <span className="mx-1 h-px w-8 bg-border" />}
         </div>
       ))}
     </div>
@@ -1139,7 +1145,7 @@ function Field({
 }) {
   return (
     <div>
-      <label htmlFor={htmlFor} className="text-sm font-medium text-gray-900">{label}</label>
+      <label htmlFor={htmlFor} className="text-sm font-medium text-foreground">{label}</label>
       <div className="mt-1">{children}</div>
     </div>
   );
@@ -1176,12 +1182,12 @@ function MismatchBanner({
         <span aria-hidden="true">⚠️</span>
         <span className="sr-only">Warning</span>
       </p>
-      <p className="mt-3 text-lg font-semibold text-gray-900">{copy.title}</p>
-      <p className="mt-2 max-w-xs text-sm text-gray-500">{copy.body}</p>
+      <p className="mt-3 text-lg font-semibold text-foreground">{copy.title}</p>
+      <p className="mt-2 max-w-xs text-sm text-muted">{copy.body}</p>
       <button
         type="button"
         onClick={onBack}
-        className="mt-5 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-900 hover:border-black"
+        className="mt-5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:border-foreground"
       >
         <span aria-hidden="true">‹ </span>Back
       </button>
@@ -1194,7 +1200,7 @@ function ErrorBanner({ id, message }: { id?: string; message: string }) {
     <p
       id={id}
       role="alert"
-      className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600"
+      className="rounded-lg border border-danger-border bg-danger-bg px-3 py-2 text-xs text-danger"
     >
       {message}
     </p>

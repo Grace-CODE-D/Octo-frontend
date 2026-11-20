@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { isValidEmail } from "./validation";
 import {
   createPaymentIntent,
   createPaymentLink,
@@ -22,6 +23,43 @@ function makeResponse(status: number, body: unknown, contentType = "application/
   const bodyText = contentType === "application/json" ? JSON.stringify(body) : (body as string);
   return new Response(bodyText, init);
 }
+
+describe("isValidEmail", () => {
+  it("accepts a handful of valid addresses", () => {
+    expect(isValidEmail("user@example.com")).toBe(true);
+    expect(isValidEmail("first.last+tag@sub.example.co.uk")).toBe(true);
+    expect(isValidEmail("a_b-c@example.io")).toBe(true);
+  });
+
+  it("accepts valid addresses with surrounding whitespace", () => {
+    expect(isValidEmail("  user@example.com  ")).toBe(true);
+    expect(isValidEmail("\tuser@example.com\n")).toBe(true);
+  });
+
+  it("rejects addresses missing a dot in the domain", () => {
+    expect(isValidEmail("a@b")).toBe(false);
+    expect(isValidEmail("user@localhost")).toBe(false);
+  });
+
+  it("rejects addresses missing a local part or domain", () => {
+    expect(isValidEmail("@example.com")).toBe(false);
+    expect(isValidEmail("user@")).toBe(false);
+    expect(isValidEmail("user@.com")).toBe(false);
+    expect(isValidEmail("user@example.")).toBe(false);
+  });
+
+  it("rejects addresses containing whitespace or multiple @", () => {
+    expect(isValidEmail("user name@example.com")).toBe(false);
+    expect(isValidEmail("user@exa mple.com")).toBe(false);
+    expect(isValidEmail("user@@example.com")).toBe(false);
+    expect(isValidEmail("user@example@com")).toBe(false);
+  });
+
+  it("rejects empty and whitespace-only input", () => {
+    expect(isValidEmail("")).toBe(false);
+    expect(isValidEmail("   ")).toBe(false);
+  });
+});
 
 describe("payment-links path encoding", () => {
   beforeEach(() => {

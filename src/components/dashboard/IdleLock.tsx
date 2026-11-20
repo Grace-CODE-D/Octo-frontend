@@ -15,6 +15,9 @@ const WARN_BEFORE_MS = 60 * 1000;
 export function IdleLock({ onLogout }: { onLogout: () => void }) {
   const stayButtonRef = useRef<HTMLButtonElement>(null);
 
+  // The hook coordinates activity across tabs (shared last-activity record),
+  // so every tab enters the warning state together and `reset` broadcasts a
+  // "stay signed in" to all of them.
   const { state: idleState, remainingSeconds, reset } = useIdleTimer({
     timeoutMs: IDLE_TIMEOUT_MS,
     warnBeforeMs: WARN_BEFORE_MS,
